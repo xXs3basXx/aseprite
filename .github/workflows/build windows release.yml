@@ -1,0 +1,49 @@
+name: build-windows-release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        submodules: 'recursive'
+
+    - name: Install Skia
+      shell: bash
+      run: |
+        this_dir=$(cygpath "${{ github.workspace }}")
+        skia_url=$(source $this_dir/laf/misc/skia-url.sh | xargs)
+        skia_file=$(basename $skia_url)
+        curl --ssl-revoke-best-effort -L -o "$skia_file" "$skia_url"
+        unzip "$skia_file" -d skia
+    - uses: aseprite/get-ninja@main
+
+    - uses: TheMrMilchmann/setup-msvc-dev@v4
+      with:
+        arch: x64
+
+    - name: Generating Makefiles
+      shell: bash
+      run: |
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_TESTS=OFF \
+          -DENABLE_SCRIPTING=on \
+          -DENABLE_CCACHE=off \
+          -DLAF_BACKEND=skia \
+          -DSKIA_DIR=$(realpath skia) \
+          -DSKIA_LIBRARY_DIR=$(realpath skia/out/Release-x64)
+    - name: Compiling
+      shell: bash
+      run: |
+        cd build && ninja
+    - name: Upload Aseprite
+      uses: actions/upload-artifact@v4
+      with:
+        name: aseprite-windows-release
+        path: build/bin
